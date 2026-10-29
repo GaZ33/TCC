@@ -4,3 +4,9 @@
 .claude/commands
 .claude/tools
 openspec
+.venv/
+__pycache__/
+*.mp4
+*.rar
+*.task
+modelos/
