@@ -15,6 +15,7 @@ emissor_janela_zmq_sem_tela ──5555──> classificador ──5556──> fi
 | `exibidor_texto.py` | Mostra a imagem da câmera e a letra reconhecida |
 | `caracteristicas_mao.py` | As 35 características da mão (ângulos, distâncias, orientação), usadas no treino e no classificador |
 | `treinar_classificador.py` | Treina e avalia o modelo; gera `modelos/` e `resultados/` |
+| `avaliar_videos.py` | Passa vídeos gravados (teste com voluntários) pelo classificador e pelo filtro do sistema |
 | `comparar_modelos.py` / `testar_aumento_dados.py` | Experimentos: comparação de classificadores e teste do aumento de dados (`aumento_dados.py`) |
 | `novos_codigos/coleta_hand_landmarks_com_label.py` | Coletor dos datasets (uma tomada de 90 frames por letra) |
 
@@ -65,6 +66,18 @@ Abra quatro terminais na pasta do projeto, nesta ordem (quem recebe começa ante
 ```
 
 Só o emissor usa a câmera. No exibidor: M troca o modo (manual/automático), ESPAÇO limpa, V liga/desliga a imagem, Q sai. Os outros terminais encerram com Ctrl+C.
+
+## 4. Teste com voluntários (vídeos)
+
+Os voluntários gravam um vídeo por letra (mão direita, uns 10 segundos). Salve-os numa pasta com nomes
+`<código>_<etapa>_<letra>.mp4` (ex.: `v1_imagem_L.mp4`, `v1_video_Z.mp4`; use códigos, não nomes) e rode:
+
+```powershell
+.venv\Scripts\python avaliar_videos.py <pasta_dos_videos>
+```
+
+Cada vídeo passa pelo mesmo classificador e filtro do sistema; o resultado (primeira letra mostrada, tempo até ela e
+acerto por quadro) vai para `resultados/voluntarios/`. O script percebe sozinho se o vídeo veio espelhado.
 
 ## Testes
 

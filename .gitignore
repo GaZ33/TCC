@@ -16,3 +16,6 @@ modelos/
 
 # Diagramas do TCC (fontes e imagens geradas; ficam fora do repositório)
 diagramas/
+
+# Material e vídeos do teste com voluntários (dados pessoais; ficam fora do repositório)
+teste_voluntarios/
