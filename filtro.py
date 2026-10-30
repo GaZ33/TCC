@@ -1,3 +1,17 @@
+"""
+filtro_1.py: filtro entre o classificador e o exibidor.
+
+  Classificador --(5556, JSON)--> FILTRO --(5557, JSON)--> Exibidor
+
+Recebe do classificador um dicionário de probabilidades por classe, escolhe a melhor e
+decide o que o exibidor mostra:
+  * a melhor classe é uma letra/número com confiança >= LIMIAR_CONFIANCA  -> SHOW
+  * a melhor classe é "-" (sem mão) OU a confiança é menor que o limiar    -> blank (nada é enviado)
+
+A confiança é a fatia da melhor classe no total, em %, então não depende de o classificador
+mandar 0 a 1 ou 0 a 100.
+"""
+
 import json
 import logging
 import math
@@ -9,15 +23,20 @@ import zmq
 # 1. CONFIGURAÇÕES
 # ============================================================
 
-ENDPOINT_CLASSIFICADOR = "tcp://*:5556"
-ENDPOINT_EXIBIDOR = "tcp://127.0.0.1:5557"
+ENDPOINT_CLASSIFICADOR = "tcp://127.0.0.1:5556"   # bind (PULL): o classificador conecta aqui
+ENDPOINT_EXIBIDOR = "tcp://127.0.0.1:5557"        # connect (PUSH): o exibidor faz bind aqui
 
 # O classificador deve usar "-" para representar blank.
 BLANK_LABEL = "-"
 LABELS = [BLANK_LABEL] + list("abcdefghijklmnopqrstuvwxyz0123456789")
 
-# O filtro limpa a tela após esta quantidade de blanks consecutivos.
-BLANKS_PARA_LIMPAR = 10
+# Confiança mínima (em %) da melhor classe para virar SHOW. Abaixo disso a previsão conta
+# como blank. 50 é um ponto de partida: ajuste olhando as probabilidades reais (nível DEBUG).
+LIMIAR_CONFIANCA = 50.0
+
+# Blanks consecutivos para mandar um CLEAR ao exibidor. 0 = desligado (o exibidor atual
+# ignora CLEAR; deixe 0 para não enviar eventos que ninguém usa).
+BLANKS_PARA_LIMPAR = 0
 
 # Chaves aceitas caso o classificador envie a previsão dentro de um envelope.
 ENVELOPES = ("probabilidades", "predicao", "probabilities")
@@ -101,6 +120,11 @@ def escolher_classe(probabilidades):
     return max(probabilidades, key=probabilidades.get)
 
 
+def calcular_confianca(probabilidades, classe):
+    """Fatia da classe no total das estimativas, em % (0 a 100)."""
+    return 100.0 * probabilidades[classe] / sum(probabilidades.values())
+
+
 # ============================================================
 # 3. LÓGICA DO FILTRO
 # ============================================================
@@ -109,21 +133,31 @@ class Filtro:
     def __init__(self):
         self.blanks_consecutivos = 0
         self.tela_limpa = False
+        self.abaixo_do_limiar = 0     # quantas previsões viraram blank por confiança baixa
 
     def processar_previsao(self, probabilidades):
         classe = escolher_classe(probabilidades)
+        confianca = calcular_confianca(probabilidades, classe)
 
-        if classe == BLANK_LABEL:
+        sem_mao = classe == BLANK_LABEL
+        incerta = not sem_mao and confianca < LIMIAR_CONFIANCA
+        if incerta:
+            self.abaixo_do_limiar += 1
+
+        if sem_mao or incerta:
             self.blanks_consecutivos += 1
             logging.debug(
-                "Blank consecutivo: %d/%d",
+                "Blank (%s) consecutivo: %d | melhor: %s com %.1f%%",
+                "sem mão" if sem_mao else "confiança baixa",
                 self.blanks_consecutivos,
-                BLANKS_PARA_LIMPAR,
+                classe,
+                confianca,
             )
 
-            # Envia CLEAR somente uma vez por sequência de blanks.
+            # Envia CLEAR somente uma vez por sequência de blanks (e só se estiver ligado).
             if (
-                self.blanks_consecutivos >= BLANKS_PARA_LIMPAR
+                BLANKS_PARA_LIMPAR > 0
+                and self.blanks_consecutivos >= BLANKS_PARA_LIMPAR
                 and not self.tela_limpa
             ):
                 self.tela_limpa = True
@@ -131,11 +165,11 @@ class Filtro:
 
             return None
 
-        # Uma letra ou número interrompe a sequência de blanks.
+        # Uma letra ou número confiável interrompe a sequência de blanks.
         self.blanks_consecutivos = 0
         self.tela_limpa = False
 
-        # Cada previsão vencedora de letra/número é encaminhada ao exibidor.
+        # Cada previsão vencedora e confiável é encaminhada ao exibidor.
         return {"acao": "SHOW", "valor": classe}
 
 
@@ -169,7 +203,9 @@ def main():
     logging.info("Filtro iniciado.")
     logging.info("Entrada do classificador: %s", ENDPOINT_CLASSIFICADOR)
     logging.info("Saída para o exibidor: %s", ENDPOINT_EXIBIDOR)
-    logging.info("Limpeza após %d blanks consecutivos.", BLANKS_PARA_LIMPAR)
+    logging.info("Confiança mínima para mostrar: %.0f%%", LIMIAR_CONFIANCA)
+    if BLANKS_PARA_LIMPAR > 0:
+        logging.info("CLEAR após %d blanks consecutivos.", BLANKS_PARA_LIMPAR)
 
     try:
         while True:
@@ -196,17 +232,19 @@ def main():
             if evento is not None:
                 socket_saida.send_json(evento)
                 eventos_enviados += 1
-                logging.info("Classe vencedora: %s | Evento enviado: %s", classe, evento)
+                logging.info("Classe vencedora: %s (%.0f%%) | Evento enviado: %s",
+                             classe, calcular_confianca(probabilidades, classe), evento)
 
     except KeyboardInterrupt:
         logging.info("Encerrando filtro...")
 
     finally:
         logging.info(
-            "Resumo: recebidas=%d inválidas=%d eventos_enviados=%d",
+            "Resumo: recebidas=%d inválidas=%d eventos_enviados=%d abaixo_do_limiar=%d",
             recebidas,
             invalidas,
             eventos_enviados,
+            filtro.abaixo_do_limiar,
         )
         socket_entrada.close()
         socket_saida.close()

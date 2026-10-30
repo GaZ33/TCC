@@ -1,3 +1,12 @@
+"""
+emissor_janela_zmq_sem_tela_1.py: começo da cadeia (EMISSOR -> Classificador -> Filtro -> Exibidor).
+
+Captura a câmera (sem abrir janela), extrai os landmarks da mão com o MediaPipe e:
+  * envia ao classificador (tcp://127.0.0.1:5555) a janela deslizante de frames, com o lado
+    da mão ("maos") e a proporção da imagem ("proporcao") de que as características dependem;
+  * envia ao exibidor (tcp://127.0.0.1:5558) a imagem da câmera, com a mão desenhada.
+"""
+
 import os
 import urllib.request
 from collections import deque
@@ -34,14 +43,33 @@ MARGEM_HISTERESE = 0.02   # folga para SAIR de um regime (evita oscilar na borda
 FRAMES_CONFIRMACAO = 15   # frames seguidos no novo regime antes de o step mudar
 MIN_FRAMES_COM_MAO = 0    # só envia a janela se tiver ao menos N frames COM mão (0 = sempre envia, até janela vazia)
 
+# --- Câmera ---
+LARGURA_CAMERA = 640      # mesma resolução das gravações usadas no treino (se a câmera aceitar)
+ALTURA_CAMERA = 480
+
 # --- ZeroMQ ---
-ENDERECO = "tcp://127.0.0.1:5555"
+ENDERECO = "tcp://127.0.0.1:5555"           # janelas para o classificador (PUSH, connect)
+
+# --- Prévia da câmera para o exibidor (o exibidor mostra a imagem; o emissor segue sem janela) ---
+ENVIAR_PREVIA = True
+ENDERECO_PREVIA = "tcp://127.0.0.1:5558"    # imagens JPEG para o exibidor (PUSH, connect)
+PREVIA_A_CADA_N_FRAMES = 2                  # 2 = uma imagem a cada 2 frames (15 por segundo a 30 fps)
+QUALIDADE_JPEG = 70
 
 # Índices dos landmarks da mão no MediaPipe
 PULSO = 0
 BASE_MEDIO = 9
 PONTAS = [4, 8, 12, 16, 20]
 DIM = 3 if USAR_Z else 2
+
+HAND_CONNECTIONS = [
+    (0, 1), (1, 2), (2, 3), (3, 4),         # Polegar
+    (0, 5), (5, 6), (6, 7), (7, 8),         # Indicador
+    (5, 9), (9, 10), (10, 11), (11, 12),    # Médio
+    (9, 13), (13, 14), (14, 15), (15, 16),  # Anelar
+    (13, 17), (17, 18), (18, 19), (19, 20), # Mínimo
+    (0, 17)                                 # Base da palma
+]
 
 
 # =====================================================================
@@ -155,6 +183,27 @@ def montar_linha_sem_mao(frame_id):
     return [frame_id] + [0.0] * (21 * 4 + 1)
 
 
+def desenhar_esqueleto(imagem, pontos_px):
+    """Desenha a mão detectada (linhas verdes e pontos vermelhos) direto na imagem."""
+    for a, b in HAND_CONNECTIONS:
+        cv2.line(imagem, pontos_px[a], pontos_px[b], (0, 255, 0), 2)
+    for ponto in pontos_px:
+        cv2.circle(imagem, ponto, 4, (0, 0, 255), -1)
+
+
+def enviar_previa(socket_previa, imagem, pontos_px):
+    """Manda a imagem (com a mão desenhada, se houver) ao exibidor em JPEG, sem nunca travar."""
+    if pontos_px is not None:
+        desenhar_esqueleto(imagem, pontos_px)
+    ok, jpeg = cv2.imencode(".jpg", imagem, [cv2.IMWRITE_JPEG_QUALITY, QUALIDADE_JPEG])
+    if not ok:
+        return
+    try:
+        socket_previa.send(jpeg.tobytes(), flags=zmq.NOBLOCK)
+    except zmq.Again:
+        pass      # exibidor fechado ou lento: uma imagem velha não interessa
+
+
 # =====================================================================
 # 1. Modelo do MediaPipe
 # =====================================================================
@@ -191,7 +240,17 @@ columns.append('hand_confidence')
 contexto = zmq.Context()
 socket_envio = contexto.socket(zmq.PUSH)
 socket_envio.setsockopt(zmq.LINGER, 1000)     # ao encerrar, espera até 1 s para entregar o que sobrou
+socket_envio.setsockopt(zmq.SNDHWM, 4)        # fila curta: janela velha não interessa ao classificador
+socket_envio.setsockopt(zmq.IMMEDIATE, 1)     # sem classificador conectado, descarta em vez de acumular
 socket_envio.connect(ENDERECO)
+
+socket_previa = None
+if ENVIAR_PREVIA:
+    socket_previa = contexto.socket(zmq.PUSH)
+    socket_previa.setsockopt(zmq.LINGER, 0)
+    socket_previa.setsockopt(zmq.SNDHWM, 2)
+    socket_previa.setsockopt(zmq.IMMEDIATE, 1)
+    socket_previa.connect(ENDERECO_PREVIA)
 
 # =====================================================================
 # 3. Câmera
@@ -202,14 +261,21 @@ if not cap.isOpened():
     print("[ERRO] Não foi possível abrir a câmera.")
     exit(1)
 
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, LARGURA_CAMERA)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, ALTURA_CAMERA)
 cap.set(cv2.CAP_PROP_FPS, 30)
-width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))     # resolução que a câmera realmente aceitou
 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+proporcao = width / height if height else LARGURA_CAMERA / ALTURA_CAMERA   # o classificador usa isto
+if (width, height) != (LARGURA_CAMERA, ALTURA_CAMERA):
+    print(f"[AVISO] A câmera abriu em {width}x{height}, e o treino usou {LARGURA_CAMERA}x{ALTURA_CAMERA}. "
+          "A proporção real é enviada ao classificador.")
 
 # =====================================================================
 # 4. Estado do programa
 # =====================================================================
 buffer = deque(maxlen=TAMANHO_JANELA)         # cheia: cada append descarta o elemento mais antigo
+buffer_maos = deque(maxlen=TAMANHO_JANELA)    # lado da mão de cada frame ("Left", "Right" ou None)
 historico_mov = deque(maxlen=JANELA_MOVIMENTO)
 controle = ControladorStep()
 step = controle.step
@@ -236,13 +302,16 @@ try:
         resultado = detector.detect(mp_image)
 
         frame_id += 1     # todo frame capturado é numerado, com ou sem mão
+        pontos_px = None  # só preenchido quando há mão (usado no desenho da prévia)
 
         if resultado.hand_landmarks:
             hand = resultado.hand_landmarks[0]
             hand_score = resultado.handedness[0][0].score
+            lado = resultado.handedness[0][0].category_name   # "Left"/"Right" (frame espelhado)
 
             # --- 1) Mede o movimento das pontas dos dedos ---
             pts = landmarks_para_px(hand, width, height)
+            pontos_px = [(int(x), int(y)) for x, y in pts[:, :2]]
             pontas = pts[PONTAS]
             referencia = norma(pts[BASE_MEDIO] - pts[PULSO])
 
@@ -257,6 +326,7 @@ try:
         else:
             # Sem mão: o frame é capturado do mesmo jeito.
             # Conta como movimento zero (baixa dinâmica) e vira uma linha de zeros.
+            lado = None
             pontas_anterior = None        # não compara a posição de antes com a de depois da ausência
             historico_mov.append(0.0)
             linha = montar_linha_sem_mao(frame_id)
@@ -271,7 +341,12 @@ try:
 
         # --- 3) Guarda o frame (com ou sem mão) na deque ---
         buffer.append(linha)
+        buffer_maos.append(lado)
         frames_desde_envio += 1
+
+        # --- 3b) Prévia para o exibidor (não interfere nos dados enviados ao classificador) ---
+        if socket_previa is not None and frame_id % PREVIA_A_CADA_N_FRAMES == 0:
+            enviar_previa(socket_previa, frame, pontos_px)
 
         # --- 4) Envia: 1º envio quando a deque enche; depois a cada `step` frames ---
         if len(buffer) == TAMANHO_JANELA and frames_desde_envio >= step:
@@ -284,6 +359,8 @@ try:
                     "frames_com_mao": frames_com_mao,
                     "colunas": columns,
                     "amostras": list(buffer),
+                    "maos": list(buffer_maos),   # um por linha de "amostras": o classificador precisa do lado
+                    "proporcao": proporcao,      # largura / altura da imagem
                 }
                 try:
                     socket_envio.send_pyobj(pacote, flags=zmq.NOBLOCK)
@@ -300,4 +377,6 @@ except KeyboardInterrupt:
 finally:
     cap.release()
     socket_envio.close()
+    if socket_previa is not None:
+        socket_previa.close()
     contexto.term()
