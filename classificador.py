@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-classificador_zmq.py: classificador de letras do alfabeto manual em tempo real.
+classificador.py: classificador de letras do alfabeto manual em tempo real.
 
 Posição na arquitetura (todos os elos são PUSH -> PULL; quem recebe faz ``bind``)::
 
@@ -49,7 +49,7 @@ Segurança
 
 Uso::
 
-    python classificador_zmq.py [--modelo CAMINHO] [--modo-saida janela|frame]
+    python classificador.py [--modelo CAMINHO] [--modo-saida janela|frame]
 """
 
 from __future__ import annotations

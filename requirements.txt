@@ -1,0 +1,8 @@
+# Versões verificadas com Python 3.14.
+# O mediapipe já instala o opencv-contrib-python (cv2) e o numpy.
+# NÃO instale também o opencv-python: com os dois pacotes de OpenCV juntos, o cv2 quebra.
+mediapipe==1.1.0
+pandas==3.0.6
+scikit-learn==1.9.1
+pyzmq==27.2.0
+matplotlib==3.11.2

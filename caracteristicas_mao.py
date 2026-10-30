@@ -64,7 +64,7 @@ def mao_esquerda(nome_mediapipe):
     """Converte o nome de mão do MediaPipe ('Left'/'Right') em True = mão esquerda.
 
     Vale para frames ESPELHADOS (cv2.flip(frame, 1)), como os do coletor e do
-    classificador ao vivo. Nesses frames o MediaPipe chama a mão direita do
+    emissor da cadeia ZMQ. Nesses frames o MediaPipe chama a mão direita do
     usuário de 'Left' e a esquerda de 'Right'. Medido nos vídeos gravados:
     ~99% dos frames do Fernando e ~97% das tomadas do Gabriel com nome certo.
     """

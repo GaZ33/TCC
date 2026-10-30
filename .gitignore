@@ -10,3 +10,6 @@ __pycache__/
 *.rar
 *.task
 modelos/
+
+# Documento do TCC (fica fora do repositório)
+*.docx

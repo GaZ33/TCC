@@ -1,5 +1,5 @@
 """
-filtro_1.py: filtro entre o classificador e o exibidor.
+filtro.py: filtro entre o classificador e o exibidor.
 
   Classificador --(5556, JSON)--> FILTRO --(5557, JSON)--> Exibidor
 

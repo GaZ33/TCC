@@ -1,5 +1,5 @@
 """
-emissor_janela_zmq_sem_tela_1.py: começo da cadeia (EMISSOR -> Classificador -> Filtro -> Exibidor).
+emissor_janela_zmq_sem_tela.py: começo da cadeia (EMISSOR -> Classificador -> Filtro -> Exibidor).
 
 Captura a câmera (sem abrir janela), extrai os landmarks da mão com o MediaPipe e:
   * envia ao classificador (tcp://127.0.0.1:5555) a janela deslizante de frames, com o lado
@@ -226,14 +226,14 @@ options = vision.HandLandmarkerOptions(
 )
 detector = vision.HandLandmarker.create_from_options(options)
 
-# Cabeçalho das colunas (enviado junto com os dados para o receptor montar o CSV)
+# Cabeçalho das colunas (enviado junto com os dados para o classificador localizar cada valor)
 columns = ['frame_id']
 for i in range(21):
     columns.extend([f'lm_{i}_x', f'lm_{i}_y', f'lm_{i}_z', f'lm_{i}_vis'])
 columns.append('hand_confidence')
 
 # =====================================================================
-# 2. ZeroMQ (PUSH: este script ENVIA; o receptor faz bind, este faz connect)
+# 2. ZeroMQ (PUSH: este script ENVIA; o classificador faz bind, este faz connect)
 # =====================================================================
 contexto = zmq.Context()
 socket_envio = contexto.socket(zmq.PUSH)
@@ -365,7 +365,7 @@ try:
                     n_envios += 1
                     log(f"[ENVIO {n_envios}] frames {buffer[0][0]}..{buffer[-1][0]} | com mão: {frames_com_mao}/{TAMANHO_JANELA} | step={step} | {controle.confirmado.name}")
                 except zmq.Again:
-                    log("[AVISO] Fila de envio cheia ou receptor indisponível: janela descartada.")
+                    log("[AVISO] Fila de envio cheia ou classificador indisponível: janela descartada.")
             else:
                 log(f"[PULO] Janela com só {frames_com_mao} frames com mão (mínimo {MIN_FRAMES_COM_MAO}): não enviada.")
             frames_desde_envio = 0
