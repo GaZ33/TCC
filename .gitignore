@@ -13,3 +13,6 @@ modelos/
 
 # Documento do TCC (fica fora do repositório)
 *.docx
+
+# Diagramas do TCC (fontes e imagens geradas; ficam fora do repositório)
+diagramas/
