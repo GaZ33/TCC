@@ -1,0 +1,13 @@
+modelo,pessoa,hiperparametros,acerto_validacao_interna,segundos_treino,ms_por_frame
+Random Forest,Gabriel,"{'max_features': 'sqrt', 'min_samples_leaf': 5}",0.5602,0.9564,15.6659
+SVM,Gabriel,"{'C': 0.3, 'gamma': 0.003}",0.5623,4.9456,0.7101
+MLP,Gabriel,"{'hidden_layer_sizes': (512, 256), 'alpha': 0.1}",0.5285,12.9041,0.4451
+Comitê (média dos 3),Gabriel,os escolhidos acima para cada modelo,,18.806,16.8211
+Random Forest,Fernando,"{'max_features': 0.5, 'min_samples_leaf': 1}",0.5622,3.9563,15.1371
+SVM,Fernando,"{'C': 1, 'gamma': 0.003}",0.5752,4.4166,0.6583
+MLP,Fernando,"{'hidden_layer_sizes': (512, 256), 'alpha': 0.1}",0.543,31.2563,0.4089
+Comitê (média dos 3),Fernando,os escolhidos acima para cada modelo,,39.6292,16.2043
+Random Forest,Giovanni,"{'max_features': 'sqrt', 'min_samples_leaf': 5}",0.5135,1.2801,16.312
+SVM,Giovanni,"{'C': 0.1, 'gamma': 0.01}",0.5699,7.1198,0.8736
+MLP,Giovanni,"{'hidden_layer_sizes': (256, 128), 'alpha': 0.0001}",0.5351,2.5522,0.3213
+Comitê (média dos 3),Giovanni,os escolhidos acima para cada modelo,,10.9522,17.5069

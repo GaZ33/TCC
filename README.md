@@ -15,6 +15,7 @@ emissor_janela_zmq_sem_tela ──5555──> classificador ──5556──> fi
 | `exibidor_texto.py` | Mostra a imagem da câmera e a letra reconhecida |
 | `caracteristicas_mao.py` | As 35 características da mão (ângulos, distâncias, orientação), usadas no treino e no classificador |
 | `treinar_classificador.py` | Treina e avalia o modelo; gera `modelos/` e `resultados/` |
+| `comparar_modelos.py` / `testar_aumento_dados.py` | Experimentos: comparação de classificadores e teste do aumento de dados (`aumento_dados.py`) |
 | `novos_codigos/coleta_hand_landmarks_com_label.py` | Coletor dos datasets (uma tomada de 90 frames por letra) |
 
 ## Instalação (uma vez)
@@ -44,6 +45,13 @@ Cada pasta em `DATASETS` (no topo do arquivo) é o dataset de uma pessoa. O scri
 
 - `modelos/random_forest_letras.joblib`: o modelo treinado com todas as pessoas (usado pelo `classificador.py`);
 - `resultados/`: `relatorio.md`, tabelas CSV (acerto por pessoa, por letra, matriz de confusão) e as figuras `matriz_confusao.png` e `acerto_por_classe.png`.
+
+Experimentos (mesma avaliação "pessoa de fora"; levam alguns minutos):
+
+```powershell
+.venv\Scripts\python comparar_modelos.py       # Random Forest x SVM x MLP x comitê -> resultados/comparacao/
+.venv\Scripts\python testar_aumento_dados.py   # com e sem aumento de dados (aumento_dados.py) -> resultados/aumento_dados/
+```
 
 ## 3. Rodar o sistema
 
