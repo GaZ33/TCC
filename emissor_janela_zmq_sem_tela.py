@@ -184,11 +184,9 @@ def montar_linha_sem_mao(frame_id):
 
 
 def desenhar_esqueleto(imagem, pontos_px):
-    """Desenha a mão detectada (linhas verdes e pontos vermelhos) direto na imagem."""
+    """Desenha a mão detectada (só as linhas verdes, sem os pontos) direto na imagem."""
     for a, b in HAND_CONNECTIONS:
         cv2.line(imagem, pontos_px[a], pontos_px[b], (0, 255, 0), 2)
-    for ponto in pontos_px:
-        cv2.circle(imagem, ponto, 4, (0, 0, 255), -1)
 
 
 def enviar_previa(socket_previa, imagem, pontos_px):
