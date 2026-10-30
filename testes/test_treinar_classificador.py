@@ -143,7 +143,7 @@ class TestResultados(unittest.TestCase):
                 "P2": {"tomadas": 1, "frames": 4, "frames_sem_mao": 2}}
         pasta = tempfile.mkdtemp()
         caminhos = t.salvar_resultados(pasta, info, resumo, previsoes, {"P1": [], "P2": []}, 0.99,
-                                       os.path.join(t.SCRIPT_DIR, "modelos", "m.joblib"))
+                                       os.path.join(t.SCRIPT_DIR, "modelos", "m.joblib"), 1.25)
         for caminho in caminhos.values():
             self.assertTrue(os.path.getsize(caminho) > 0, caminho)
         with open(caminhos["relatorio.md"], encoding="utf-8") as arquivo:
@@ -151,6 +151,7 @@ class TestResultados(unittest.TestCase):
         self.assertIn("| **Média** |", relatorio)
         self.assertIn("99,0%", relatorio)
         self.assertIn("modelos/m.joblib", relatorio)
+        self.assertIn("1,25 ms", relatorio)
         matriz = pd.read_csv(caminhos["matriz_confusao.csv"], index_col=0)
         np.testing.assert_allclose(matriz.sum(axis=1), 1.0)   # cada linha soma 100%
 

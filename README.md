@@ -1,6 +1,6 @@
 # TCC
 
-Reconhecimento do alfabeto manual de Libras com landmarks da mão (MediaPipe) e Random Forest, em tempo real.
+Reconhecimento do alfabeto manual de Libras com landmarks da mão (MediaPipe) e SVM, em tempo real.
 
 ```
 emissor_janela_zmq_sem_tela ──5555──> classificador ──5556──> filtro ──5557──> exibidor_texto
@@ -10,7 +10,7 @@ emissor_janela_zmq_sem_tela ──5555──> classificador ──5556──> fi
 | Arquivo | O que faz |
 |---|---|
 | `emissor_janela_zmq_sem_tela.py` | Abre a câmera, extrai os 21 landmarks da mão e envia a janela deslizante de frames ao classificador e a imagem ao exibidor |
-| `classificador.py` | Calcula as características de cada frame novo e as probabilidades de cada letra (Random Forest) |
+| `classificador.py` | Calcula as características de cada frame novo e as probabilidades de cada letra (SVM) |
 | `filtro.py` | Escolhe a letra mais provável e só a repassa se a confiança passar do limiar |
 | `exibidor_texto.py` | Mostra a imagem da câmera e a letra reconhecida |
 | `caracteristicas_mao.py` | As 35 características da mão (ângulos, distâncias, orientação), usadas no treino e no classificador |
@@ -43,7 +43,7 @@ Clique na janela da câmera. Aperte uma letra para escolher o que será gravado,
 
 Cada pasta em `DATASETS` (no topo do arquivo) é o dataset de uma pessoa. O script treina com todas menos uma e testa na que ficou de fora, para cada pessoa. **Esse acerto "pessoa de fora" é o número do TCC**: mede o modelo com alguém que ele nunca viu. No fim, salva:
 
-- `modelos/random_forest_letras.joblib`: o modelo treinado com todas as pessoas (usado pelo `classificador.py`);
+- `modelos/classificador_letras.joblib`: o modelo treinado com todas as pessoas (SVM; usado pelo `classificador.py`);
 - `resultados/`: `relatorio.md`, tabelas CSV (acerto por pessoa, por letra, matriz de confusão) e as figuras `matriz_confusao.png` e `acerto_por_classe.png`.
 
 Experimentos (mesma avaliação "pessoa de fora"; levam alguns minutos):

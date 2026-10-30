@@ -1,5 +1,5 @@
 """
-Treina e avalia o classificador de letras do alfabeto manual (Random Forest).
+Treina e avalia o classificador de letras do alfabeto manual (SVM; Random Forest como alternativa).
 
 Uso (de dentro da pasta do projeto):
   .venv\\Scripts\\python treinar_classificador.py
@@ -12,7 +12,8 @@ Etapas:
   4. Salva em resultados/ o relatório, as tabelas (CSV) e as figuras (PNG) da avaliação.
 
 Por que não sortear frames para teste? Os 90 frames de uma tomada são quase iguais entre si.
-Sorteando, o teste vira cópia do treino e o acerto fica perto de 99%, mas é ilusório.
+Sorteando, o teste vira cópia do treino e o acerto sobe muito (99% com o Random Forest,
+84% com a SVM), mas é ilusório.
 Esse número aparece no relatório só para comparação.
 """
 
@@ -20,6 +21,7 @@ import datetime
 import glob
 import os
 import re
+import time
 
 import joblib
 import matplotlib
@@ -29,9 +31,13 @@ import numpy as np
 import pandas as pd
 import sklearn
 from matplotlib.colors import LinearSegmentedColormap
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
 from sklearn.utils.class_weight import compute_sample_weight
 
 import caracteristicas_mao
@@ -53,7 +59,12 @@ DATASETS = {
 # mesma forma de mão), então o padrão é treinar só as letras.
 CLASSES = "letras"
 
-N_ARVORES = 300
+# Modelo do sistema: "svm" (adotado depois de comparar_modelos.py) ou "random_forest"
+MODELO = "svm"
+# SVM com kernel RBF: mediana dos valores escolhidos nas 3 rodadas de comparar_modelos.py
+SVM_C = 0.3
+SVM_GAMMA = 0.003
+N_ARVORES = 300     # Random Forest
 SEMENTE = 42
 PASTA_MODELOS = os.path.join(SCRIPT_DIR, "modelos")
 PASTA_RESULTADOS = os.path.join(SCRIPT_DIR, "resultados")
@@ -148,13 +159,44 @@ def preparar(dados):
     return X, y
 
 
+def criar_modelo():
+    if MODELO == "svm":
+        # Características padronizadas (o kernel RBF depende da escala) e probabilidades
+        # calibradas, porque o filtro usa a confiança da letra. (O SVC(probability=True)
+        # foi descontinuado no scikit-learn 1.9.)
+        return make_pipeline(StandardScaler(), CalibratedClassifierCV(
+            SVC(kernel="rbf", C=SVM_C, gamma=SVM_GAMMA), ensemble=False))
+    return RandomForestClassifier(n_estimators=N_ARVORES, n_jobs=-1, random_state=SEMENTE)
+
+
+def descricao_modelo():
+    if MODELO == "svm":
+        return f"SVM com kernel RBF (C = {num(SVM_C, 1)}, gamma = {num(SVM_GAMMA, 3)}), probabilidades calibradas"
+    return f"Random Forest com {N_ARVORES} árvores (semente {SEMENTE})"
+
+
 def treinar(X, y):
     # Pesos por amostra compensam classes com mais tomadas que outras.
     # (O class_weight="balanced" do scikit-learn 1.9.1 quebra com labels como '1', '2';
     #  por isso os pesos vão no fit.)
-    modelo = RandomForestClassifier(n_estimators=N_ARVORES, n_jobs=-1, random_state=SEMENTE)
-    modelo.fit(X, y, sample_weight=compute_sample_weight("balanced", y))
+    pesos = compute_sample_weight("balanced", y)
+    modelo = criar_modelo()
+    if isinstance(modelo, Pipeline):
+        modelo.fit(X, y, **{f"{modelo.steps[-1][0]}__sample_weight": pesos})
+    else:
+        modelo.fit(X, y, sample_weight=pesos)
     return modelo
+
+
+def latencia_por_quadro_ms(modelo, X, repeticoes=200):
+    """Tempo para classificar UM quadro com probabilidades, como no tempo real (em ms)."""
+    if hasattr(modelo, "n_jobs"):
+        modelo.n_jobs = 1
+    modelo.predict_proba(X[:1])
+    inicio = time.perf_counter()
+    for i in range(repeticoes):
+        modelo.predict_proba(X[i % len(X):i % len(X) + 1])
+    return (time.perf_counter() - inicio) / repeticoes * 1000
 
 
 # =====================================================================
@@ -295,7 +337,8 @@ def desenhar_acerto_por_classe(por_classe, media, caminho):
     plt.close(fig)
 
 
-def salvar_resultados(pasta, info_datasets, resumo, previsoes, fora_da_conta, acerto_aleatorio, caminho_modelo):
+def salvar_resultados(pasta, info_datasets, resumo, previsoes, fora_da_conta, acerto_aleatorio, caminho_modelo,
+                      ms_por_quadro):
     """Grava em 'pasta' as tabelas CSV, as figuras PNG e o relatorio.md. Retorna os caminhos."""
     os.makedirs(pasta, exist_ok=True)
     caminhos = {nome: os.path.join(pasta, nome) for nome in (
@@ -317,8 +360,7 @@ def salvar_resultados(pasta, info_datasets, resumo, previsoes, fora_da_conta, ac
         "# Resultados do classificador de letras",
         "",
         f"Gerado por `treinar_classificador.py` em {datetime.datetime.now():%d/%m/%Y %H:%M}. "
-        f"Random Forest com {N_ARVORES} árvores (semente {SEMENTE}), scikit-learn {sklearn.__version__}, "
-        f"classes: {CLASSES} ({len(por_classe)}).",
+        f"Modelo: {descricao_modelo()}; scikit-learn {sklearn.__version__}; classes: {CLASSES} ({len(por_classe)}).",
         "",
         "## Dados",
         "",
@@ -362,7 +404,8 @@ def salvar_resultados(pasta, info_datasets, resumo, previsoes, fora_da_conta, ac
         "## Modelo final",
         "",
         f"Treinado com todos os {int(resumo.loc['Média', 'frames'])} frames das {len(info_datasets)} pessoas "
-        f"e salvo em `{os.path.relpath(caminho_modelo, SCRIPT_DIR).replace(os.sep, '/')}`.",
+        f"e salvo em `{os.path.relpath(caminho_modelo, SCRIPT_DIR).replace(os.sep, '/')}`. "
+        f"Tempo para classificar um quadro: {num(ms_por_quadro, 2)} ms.",
         "",
     ]
     with open(caminhos["relatorio.md"], "w", encoding="utf-8") as arquivo:
@@ -396,7 +439,8 @@ def main():
     # Modelo final: todas as pessoas no treino (mais gente = melhor para pessoas novas)
     modelo = treinar(*preparar(todos))
     os.makedirs(PASTA_MODELOS, exist_ok=True)
-    caminho_modelo = os.path.join(PASTA_MODELOS, f"random_forest_{CLASSES}.joblib")
+    caminho_modelo = os.path.join(PASTA_MODELOS, f"classificador_{CLASSES}.joblib")
+    ms_por_quadro = latencia_por_quadro_ms(modelo, preparar(todos)[0])
     joblib.dump({
         "modelo": modelo,
         "classes": [str(c) for c in modelo.classes_],
@@ -405,11 +449,14 @@ def main():
         "datasets": {nome: len(d) for nome, d in datasets.items()},
         "avaliacao_pessoa_de_fora": resumo.to_dict(orient="index"),
         "versao_sklearn": sklearn.__version__,
+        "tipo_modelo": MODELO,
+        "descricao": descricao_modelo(),
     }, caminho_modelo)
 
     caminhos = salvar_resultados(PASTA_RESULTADOS, info_datasets, resumo, previsoes, fora_da_conta,
-                                 acerto_aleatorio, caminho_modelo)
-    print(f"\n[MODELO] {len(todos)} frames de {len(datasets)} pessoas -> {os.path.relpath(caminho_modelo, SCRIPT_DIR)}")
+                                 acerto_aleatorio, caminho_modelo, ms_por_quadro)
+    print(f"\n[MODELO] {descricao_modelo()} | {num(ms_por_quadro, 2)} ms por quadro")
+    print(f"[MODELO] {len(todos)} frames de {len(datasets)} pessoas -> {os.path.relpath(caminho_modelo, SCRIPT_DIR)}")
     print(f"[RESULTADOS] relatório, tabelas e figuras em {os.path.relpath(PASTA_RESULTADOS, SCRIPT_DIR)}"
           f"{os.sep} ({len(caminhos)} arquivos)")
 

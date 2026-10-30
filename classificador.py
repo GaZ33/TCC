@@ -11,7 +11,7 @@ Este processo:
 1. recebe do emissor a janela deslizante de frames (``tcp://127.0.0.1:5555``, PULL);
 2. descarta janelas atrasadas e frames já classificados (as janelas se sobrepõem);
 3. extrai as 35 características invariantes de cada frame novo com mão
-   (``caracteristicas_mao.extrair``) e calcula ``predict_proba`` do Random Forest;
+   (``caracteristicas_mao.extrair``) e calcula ``predict_proba`` do modelo treinado (SVM);
 4. envia ao filtro (``tcp://127.0.0.1:5556``, PUSH) um dicionário JSON de
    probabilidades por classe, em porcentagem, com ``"-"`` como classe blank::
 
@@ -82,7 +82,7 @@ import caracteristicas_mao
 # CONFIGURAÇÕES
 # =====================================================================
 SCRIPT_DIR: Final[str] = os.path.dirname(os.path.abspath(__file__))
-CAMINHO_MODELO_PADRAO: Final[str] = os.path.join(SCRIPT_DIR, "modelos", "random_forest_letras.joblib")
+CAMINHO_MODELO_PADRAO: Final[str] = os.path.join(SCRIPT_DIR, "modelos", "classificador_letras.joblib")
 
 ENDERECO_ENTRADA_PADRAO: Final[str] = "tcp://127.0.0.1:5555"   # bind (PULL): o emissor conecta aqui
 ENDERECO_SAIDA_PADRAO: Final[str] = "tcp://127.0.0.1:5556"     # connect (PUSH): o filtro faz bind aqui
@@ -140,7 +140,7 @@ def calcular_sha256(caminho: str) -> str:
 
 
 class ModeloLibras:
-    """Encapsula o Random Forest e a extração de características de um lote de frames."""
+    """Encapsula o modelo treinado e a extração de características de um lote de frames."""
 
     def __init__(self, estimador: Any, classes: tuple[str, ...], proporcao_treino: float) -> None:
         """Cria o invólucro.
@@ -183,7 +183,7 @@ class ModeloLibras:
         if not validos.any():
             return vazio, validos
 
-        # float32 evita uma cópia: o scikit-learn converte as árvores para float32 de qualquer forma
+        # float32 evita uma cópia no Random Forest (as árvores usam float32); os outros modelos convertem sozinhos
         entrada = caracteristicas[validos].astype(np.float32, copy=False)
         probabilidades = np.asarray(self._estimador.predict_proba(entrada), dtype=np.float64)
         return probabilidades, validos
@@ -569,7 +569,7 @@ class Configuracao:
     """Parâmetros de execução.
 
     Attributes:
-        caminho_modelo: Arquivo ``.joblib`` do Random Forest.
+        caminho_modelo: Arquivo ``.joblib`` do modelo treinado.
         sha256_modelo: SHA-256 esperado do modelo (``None`` = não conferir).
         endereco_entrada: Endpoint do ``bind`` PULL (emissor).
         endereco_saida: Endpoint do ``connect`` PUSH (filtro).
