@@ -19,3 +19,6 @@ diagramas/
 
 # Material e vídeos do teste com voluntários (dados pessoais; ficam fora do repositório)
 teste_voluntarios/
+
+# Fontes do deck da apresentação (publicado no claude.ai)
+apresentacao/
