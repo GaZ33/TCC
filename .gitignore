@@ -22,3 +22,6 @@ teste_voluntarios/
 
 # Fontes do deck da apresentação (publicado no claude.ai)
 apresentacao/
+
+# Vídeos enviados pelos voluntários (dados pessoais)
+voluntarios_video/
